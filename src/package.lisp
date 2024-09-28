@@ -1,9 +1,14 @@
 (defpackage #:coalton-compat
-  (:use #:coalton #:coalton-prelude)
+  (:use #:coalton #:coalton-prelude
+        #:coalton-compat/macros
+        #:coalton-compat/boot
+        )
   (:local-nicknames
    (#:class #:coalton-library/classes)
    (#:iterator #:coalton-library/iterator)
    (#:list #:coalton-library/list)
+   (#:types #:coalton-library/types)
+   (#:macros #:coalton-compat/macros)
    )
   (:shadow any cons car cdr)
   (:export assert-equal
@@ -24,12 +29,28 @@
            ;; PList
            Plist
            plist-get
+           ;; Unsafe
+           unsafe-cast
+
+           ;; Derivations
+           define-cast
+           define-lisp-function
+           define-show
            )
   )
 (in-package #:coalton-compat)
 ;; (cl:delete-package 'coalton-compat)
 
 (named-readtables:in-readtable coalton:coalton)
+
+(coalton-toplevel
+  (declare try-parse-lisp ((types:RuntimeRepr :a) => types:Proxy :a -> Any -> (Optional :a)))
+  (define (try-parse-lisp proxy value)
+    (let ((repr (types:runtime-repr proxy)))
+      (lisp (Optional :a) (repr value)
+        (cl:if (cl:typep value repr)
+               (Some value)
+               None)))))
 
 ;; (cl:describe 'boolean)
 ;; (cl:defmacro keyword (x))
@@ -43,56 +64,60 @@
   )
 
 (coalton:coalton-toplevel
+  (repr :native cl:keyword)
+  (define-type Keyword)
+  (define-instance (Eq Keyword)
+    (define == unsafe-pointer-eq?))
+  (define-instance (Eq Symbol)
+    (define == unsafe-pointer-eq?))
+  )
+(define-lisp-function make-keyword alexandria:make-keyword Keyword :a)
+(define-show Keyword)
+
+(coalton:coalton-toplevel
+  (repr :native cl:symbol)
+  (define-type Symbol)
+  )
+(define-show Symbol)
+
+(coalton:coalton-toplevel
   ;; Primitives
   (repr :native cl:standard-object)
   (define-type Standard-Object)
-  (repr :native cl:keyword)
-  (define-type Keyword)
-  (repr :native cl:symbol)
-  (define-type Symbol)
-  (define-instance (Eq Keyword)
-    (define (== a b) (lisp coalton:Boolean (a b) (cl:eq a b))))
-  (define-instance (Eq Symbol)
-    (define (== a b) (lisp coalton:Boolean (a b) (cl:eq a b))))
   (repr :native cl:t)
   (define-type Any)
   (repr :native cl:number)
   (define-type Timestamp)
+
+
+
   )
 
-(coalton:coalton-toplevel
-  (declare unsafe-cast (:a -> :b))
-  (define (unsafe-cast x)
-    (lisp :b (x) (cl:eval `(coalton ,x))))
-
-  (declare unify (:a -> :a -> :a))
-  (define (unify _ x) x)
-  )
+;; (coalton (try-parse-lisp (the (types:Proxy Keyword) types:Proxy) (lisp Any () :foo)))
+;; (coalton (try-parse-lisp (the (types:Proxy Keyword) types:Proxy) (lisp Any () 'foo)))
 
 (coalton:coalton-toplevel
   (repr :native cl:cons)
   (define-type (Cons :a :b))
-  (declare cons (:a -> :b -> (Cons :a :b)))
-  (define (cons a b) (lisp (Cons :a :b) (a b) (cl:cons a b)))
-  (declare car (Cons :a :b -> :a))
-  (define (car x) (lisp :a (x) (cl:car x)))
-  (declare cdr (Cons :a :b -> :b))
-  (define (cdr x) (lisp :b (x) (cl:cdr x)))
+  )
 
+(define-lisp-function cons cl:cons (Cons :a :b) :a :b)
+(define-lisp-function car cl:car :a (Cons :a :b))
+(define-lisp-function cdr cl:cdr :b (Cons :a :b))
+
+(coalton:coalton-toplevel
   (define-instance ((Eq :a) (Eq :b) => (Eq (Cons :a :b)))
     (define (== a b) (and (== (car a) (car b))
-                          (== (cdr a) (cdr b)))))
-  )
+                          (== (cdr a) (cdr b))))))
 
 (coalton:coalton-toplevel
   (repr :native cl:list)
-  (define-type (AList :a :b))
+  (define-type (AList :a :b)))
 
-  (define-instance (Into (Alist :a :b) (coalton:List (Cons :a :b)))
-    (define into unsafe-cast))
-  (define-instance (Into (coalton:List (Cons :a :b)) (Alist :a :b))
-    (define into unsafe-cast))
+(define-cast (AList :a :b) (coalton:List (Cons :a :b)))
+(define-cast (coalton:List (Cons :a :b)) (AList :a :b))
 
+(coalton:coalton-toplevel
   (define-instance (Into (Alist :a :b) (coalton:List (Tuple :a :b)))
     (define (into alist)
       (map (fn (pair)
@@ -103,8 +128,7 @@
       (into
        (map (fn ((Tuple a b))
               (cons a b))
-            alist))))
-  )
+            alist)))))
 
 (coalton:coalton-toplevel
   (define-instance (iterator:IntoIterator (Alist :a :b) (Cons :a :b))
@@ -127,8 +151,9 @@
 
 
   (define-instance (Into coalton:String Keyword)
-    (define (into x)
-      (lisp Keyword (x) (alexandria:make-keyword x)))))
+    (define into make-keyword))
+  )
+
 
 (coalton-toplevel
   (repr :native cl:list)
@@ -158,21 +183,21 @@
   (declare plist-get ((Eq :a) => (PList :a :b) -> :a -> (Optional :b)))
   (define (plist-get plist key)
     (map .second
-     (iterator:find!
-      (fn ((Tuple k _))
-        (== k key))
-      (iterator:into-iter plist))))
+         (iterator:find!
+          (fn ((Tuple k _))
+            (== k key))
+          (iterator:into-iter plist))))
   #|
-  (declare plist-get2 ((Eq :a) => (PList :a :b) -> :a -> (Optional :b)))
-  (define (plist-get2 plist key)
-  (let ((equal (fn (x) (== key x))))
-  (lisp (Optional :b) (equal plist key)
-  (cl:loop
-           for (k v) on plist by #'cl:cddr
-           cl:when (cl:funcall equal key k)
-           cl:return (Some v)
-           finally (cl:return None)))))
-   |#
+  (declare plist-get2 ((Eq :a) => (PList :a :b) -> :a -> (Optional :b))) ; ;
+  (define (plist-get2 plist key)        ; ;
+  (let ((equal (fn (x) (== key x))))    ; ;
+  (lisp (Optional :b) (equal plist key) ; ;
+  (cl:loop                              ; ;
+  for (k v) on plist by #'cl:cddr       ; ;
+  cl:when (cl:funcall equal key k)      ; ;
+  cl:return (Some v)                    ; ;
+  finally (cl:return None)))))          ; ;
+  |#
   )
 ;; (coalton (let ((plist (lisp (Plist Keyword Any) () '(:foo 5 :bar "10")))) (plist-get plist (as Keyword "foo"))))
 

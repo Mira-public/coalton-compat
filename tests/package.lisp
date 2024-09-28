@@ -33,7 +33,7 @@
    (coalton:let ((pair (coalton-compat:cons (coalton:as compat:Keyword "key") 42)))
      (compat:assert-equal (coalton:as compat:Keyword "key") (compat:car pair))
      (compat:assert-equal 42 (compat:cdr pair)))))
-(test 'cons :report 'interactive)
+;; (test 'cons :report 'interactive)
 5 #|
 (define-test alist
   (let ((kvs '((:a . 1) (:b . 2) (:c . 3)))

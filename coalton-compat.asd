@@ -5,7 +5,9 @@
   :serial t
   :depends-on (#:coalton)
   :components ((:module "src"
-                :components ((:file "package")))
+                :components ((:file "boot")
+                             (:file "macros")
+                             (:file "package")))
                 )
   :in-order-to ((asdf:test-op (asdf:test-op :coalton-compat/tests)))
   )
