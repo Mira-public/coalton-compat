@@ -6,6 +6,7 @@
   :depends-on (#:coalton)
   :components ((:module "src"
                 :components ((:file "boot")
+                             (:file "haskell")
                              (:file "macros")
                              (:file "package")))
                 )
