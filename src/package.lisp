@@ -36,14 +36,18 @@
            define-cast
            define-lisp-function
            define-show
+           define-eq
            )
   )
 (in-package #:coalton-compat)
 ;; (cl:delete-package 'coalton-compat)
+;; (cl:describe 'define-cast)
 
 (named-readtables:in-readtable coalton:coalton)
 
 (coalton-toplevel
+  (repr :native cl:t)
+  (define-type Any)
   (declare try-parse-lisp ((types:RuntimeRepr :a) => types:Proxy :a -> Any -> (Optional :a)))
   (define (try-parse-lisp proxy value)
     (let ((repr (types:runtime-repr proxy)))
@@ -66,26 +70,22 @@
 (coalton:coalton-toplevel
   (repr :native cl:keyword)
   (define-type Keyword)
-  (define-instance (Eq Keyword)
-    (define == unsafe-pointer-eq?))
-  (define-instance (Eq Symbol)
-    (define == unsafe-pointer-eq?))
   )
 (define-lisp-function make-keyword alexandria:make-keyword Keyword :a)
 (define-show Keyword)
+(define-eq Keyword unsafe-pointer-eq?)
 
 (coalton:coalton-toplevel
   (repr :native cl:symbol)
   (define-type Symbol)
   )
 (define-show Symbol)
+(define-eq Symbol unsafe-pointer-eq?)
 
 (coalton:coalton-toplevel
   ;; Primitives
   (repr :native cl:standard-object)
   (define-type Standard-Object)
-  (repr :native cl:t)
-  (define-type Any)
   (repr :native cl:number)
   (define-type Timestamp)
 
